@@ -8,3 +8,4 @@ logs/
 *.log
 evaluation/results/
 .pytest_cache/
+sample_docs/
