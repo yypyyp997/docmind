@@ -6,36 +6,41 @@
 - 用 database-level 真事务实现 v1「工程原子」想要的效果
 """
 import json
-
+from storage.embedder import embed_texts
 from storage.db import get_connection, init_tables
 from utils.exceptions import StorageError
 
 def save_document(doc_name: str, chunks: list) -> int:
-    """保存一个文档及其全部 Chunk（单事务，原子化）。返回文档 id。
-
-    :param chunks: 切分器产出的 Chunk 对象列表（chunking.splitter.Chunk）
+    """保存文档 + 全部 Chunk + 向量化（单事务原子化）。
+    流程：入库前先批量向量化（API 失败则整体失败，不产生半截数据——
+    向量化在事务外完成，事务内只做纯数据库操作）。
     """
     if not chunks:
         raise StorageError("没有任何 Chunk，拒绝入库空文档")
+
+    # ---- 向量化（事务外：API 调用慢且可能失败，不该占着事务）----
+    texts = [c.content for c in chunks]
+    vectors = embed_texts(texts)          # 失败抛 EmbeddingError，事务还没开始
     with get_connection() as conn:
         with conn.cursor() as cur:
-            # 文档已存在则先删除旧数据（重新 ingest = 覆盖式更新）
             cur.execute("DELETE FROM documents WHERE doc_name = %s", (doc_name,))
             cur.execute(
                 "INSERT INTO documents (doc_name, total_chunks) VALUES (%s, %s) RETURNING id",
                 (doc_name, len(chunks)),
             )
             doc_id = cur.fetchone()[0]
-            for c in chunks:
+            for c, vec in zip(chunks, vectors):
                 cur.execute(
                     """INSERT INTO chunks
-                       (doc_id, chunk_index, heading_path, content, page, extra)
-                       VALUES (%s, %s, %s, %s, %s, %s)""",
+                       (doc_id, chunk_index, heading_path, content, page, extra, embedding)
+                       VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::vector)""",
                     (doc_id, c.chunk_index, c.heading_path,
-                     c.content, c.page, json.dumps(c.extra, ensure_ascii=False)),
+                     c.content, c.page,
+                     json.dumps(c.extra, ensure_ascii=False),
+                     str(vec)),          # pgvector 接受 "[0.1,2.3,...]" 字符串字面量
                 )
-        conn.commit()      # 到这里才统一提交：上面任何一步失败，全部自动回滚
-    return doc_name and 0 or len(chunks)
+        conn.commit()
+    return len(chunks)
 
 def list_documents() -> list[dict]:
     """列出全部已入库文档（名称、块数、入库时间）。"""

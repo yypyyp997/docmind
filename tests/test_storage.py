@@ -26,7 +26,7 @@ from chunking.splitter import Chunk
 
 @pytest.fixture(scope="module", autouse=True)
 def _setup_test_db():
-    with psycopg.connect("postgresql://docmind:docmind123@localhost:15432/docmind", autocommit=True) as conn:
+    with psycopg.connect(TEST_URL, autocommit=True) as conn:
         try:
             conn.execute("CREATE DATABASE docmind_test")
         except psycopg.errors.DuplicateDatabase:
