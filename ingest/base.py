@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """解析层协议与统一数据结构（ingest 层的地基）。
 设计契约：
 - 所有解析器（pdf/docx/md/未来多模态）实现 Parser 协议，输出统一的 Block 列表
