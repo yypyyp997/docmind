@@ -47,7 +47,8 @@ def init_tables():
                     heading_path TEXT NOT NULL DEFAULT '',
                     content      TEXT NOT NULL,
                     page         INT,
-                    extra        JSONB DEFAULT '{}'
+                    extra        JSONB DEFAULT '{}',
+                    embedding    vector(1024)
                 )
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(doc_id)")
