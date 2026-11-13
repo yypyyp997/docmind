@@ -15,5 +15,6 @@ python-docx
 dashscope
 redis                     # Phase 5
 mcp                       # Phase 7
+redis
 # 测试
 pytest

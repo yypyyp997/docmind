@@ -19,5 +19,16 @@ services:
   #   depends_on:
   #     postgres:
   #       condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "16379:6379"     # 宿主机 16379 避开常见冲突（和 PG 用 15432 同理）
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   pgdata:
