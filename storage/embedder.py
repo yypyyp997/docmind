@@ -8,7 +8,7 @@ import dashscope
 
 EMBED_DIM=1024
 MODEL="text-embedding-v4"
-BATCH_LIMIT=25
+BATCH_LIMIT=10
 API_KEY=os.getenv("DASHSCOPE_API_KEY")
 
 class EmbeddingError(Exception):
