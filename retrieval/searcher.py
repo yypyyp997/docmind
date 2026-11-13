@@ -54,3 +54,18 @@ def search(query: str, top_k: int = 5, doc_name: str | None = None) -> list[dict
         }
         for r in rows
     ]
+
+def search_with_rerank(query: str, recall_k: int = 20, top_n: int = 3,
+                       doc_name: str | None = None) -> list[dict]:
+    """两阶段检索：先召回 recall_k 条，再精排取 top_n。
+
+    reranker 在函数体内 import（避免 searcher↔reranker 循环导入风险）。
+    精排失败时降级返回召回结果（不因精排挂而丢掉整个检索）。
+    """
+    recall = search(query, top_k=recall_k, doc_name=doc_name)
+    from retrieval.reranker import rerank
+    try:
+        return rerank(query, recall, top_n=top_n)
+    except Exception:
+        # 降级：精排失败返回召回结果的前 top_n（向量序），检索不因精排挂而失败
+        return recall[:top_n]
