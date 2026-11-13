@@ -12,16 +12,18 @@
 - 扫描件/图片型 PDF 无文本层：直接抛 ParsingError（多模态方案在 Phase 6）
 - DOCX 表格内容静默丢失：doc.paragraphs 不含表格（Phase 2 前补充 tables 处理）
 - 中文样式名兼容性：仅适配 "Heading N"/"标题 N"/"Title" 三种样式名，其他样式视为正文
+- MCP 宿主兼容性：AutoClaw 面板显示 offline（宿主适配问题），但 server 经官方 mcp SDK 客户端全协议验证通过（握手/发现/调用全通）；Claude Desktop 接入待测
+- 测试库隔离：新建数据库需手动启用 pgvector 扩展（CREATE EXTENSION vector）——计划并入 init_tables 自动化
 
 ## 路线图
 - [x] Phase 0 骨架与立项
 - [x] Phase 1 文档解析层（PDF/DOCX/MD：文本+标题层级；表格为已知边界）
-- [ ] Phase 2 切分 / 向量化 / pgvector 入库
-- [ ] Phase 3 检索问答链路（LangGraph 编排 + 引用溯源）
-- [ ] Phase 4 rerank 两阶段（gte-rerank）
-- [ ] Phase 5 Redis（缓存 / 限流 / 计数器）
+- [x] Phase 2 切分 / pgvector 入库（存储层+向量列；pgvector 语义检索已通）
+- [x] Phase 3 检索层（语义检索 + metadata filter；LangGraph 问答编排待接）
+- [x] Phase 4 rerank 两阶段（gte-rerank；对照评估首轮 80%/80% 打平——小库天花板，已记录）
+- [x] Phase 5 Redis（缓存 / 限流 / 计数器 + 静默降级保护）
 - [ ] Phase 6 多模态扩展（图片描述 / ASR 音频）
-- [ ] Phase 7 MCP 工具进程化
+- [x] Phase 7 MCP 工具进程化（三工具 + 客户端全协议验证）
 - [ ] Phase 8 RAGAS 对照评估
 
 ## 设计决策（ADR）
