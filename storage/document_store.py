@@ -9,15 +9,30 @@ import json
 from storage.embedder import embed_texts
 from storage.db import get_connection, init_tables
 from utils.exceptions import StorageError
+import hashlib
 
-def save_document(doc_name: str, chunks: list) -> int:
+def compute_hash(text: str) -> str:
+    """计算文本的 MD5 哈希（diff 检测用）"""
+    return hashlib.md5(text.encode("utf-8")).hexdigest()
+
+def get_stored_hash(doc_name: str) -> str | None:
+    """查某文档已存储的哈希。不存在返回 None。"""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT content_hash FROM documents WHERE doc_name = %s", (doc_name,))
+            row = cur.fetchone()
+    return row[0] if row else None
+
+def save_document(doc_name: str, chunks: list, content_hash: str | None = None) -> int:
     """保存文档 + 全部 Chunk + 向量化（单事务原子化）。
     流程：入库前先批量向量化（API 失败则整体失败，不产生半截数据——
     向量化在事务外完成，事务内只做纯数据库操作）。
+    :param content_hash: 文档内容哈希（可选）。提供时：与已存哈希相同则跳过入库（增量同步）。
     """
     if not chunks:
         raise StorageError("没有任何 Chunk，拒绝入库空文档")
-
+    if content_hash and get_stored_hash(doc_name) == content_hash:
+        return 0
     # ---- 向量化（事务外：API 调用慢且可能失败，不该占着事务）----
     texts = [c.content for c in chunks]
     vectors = embed_texts(texts)          # 失败抛 EmbeddingError，事务还没开始
@@ -25,8 +40,8 @@ def save_document(doc_name: str, chunks: list) -> int:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM documents WHERE doc_name = %s", (doc_name,))
             cur.execute(
-                "INSERT INTO documents (doc_name, total_chunks) VALUES (%s, %s) RETURNING id",
-                (doc_name, len(chunks)),
+                "INSERT INTO documents (doc_name, total_chunks, content_hash) VALUES (%s, %s ,%s) RETURNING id",
+                (doc_name, len(chunks), content_hash),
             )
             doc_id = cur.fetchone()[0]
             for c, vec in zip(chunks, vectors):

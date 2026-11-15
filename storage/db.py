@@ -33,10 +33,11 @@ def init_tables():
         with conn.cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS documents (
-                    id           SERIAL PRIMARY KEY,
-                    doc_name     TEXT UNIQUE NOT NULL,
-                    total_chunks INT NOT NULL DEFAULT 0,
-                    ingested_at  TIMESTAMP DEFAULT NOW()
+                     id SERIAL             PRIMARY KEY,
+                     doc_name TEXT         UNIQUE NOT NULL,
+                     total_chunks          INT NOT NULL DEFAULT 0,
+                     content_hash          TEXT,
+                     ingested_at           TIMESTAMP DEFAULT NOW()
                 )
             """)
             cur.execute("""
