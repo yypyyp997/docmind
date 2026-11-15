@@ -21,7 +21,7 @@ def test_extension_case_insensitive():
 def test_unsupported_extension_raises():
     """不支持的格式 → ParsingError 且信息含支持列表"""
     with pytest.raises(ParsingError) as exc_info:
-        get_parser("data.jpg")
+        get_parser("data.exe")
     assert ".md" in str(exc_info.value)   # 报错信息里有支持格式提示
 
 def test_txt_parser_registered():

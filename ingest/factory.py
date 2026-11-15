@@ -5,6 +5,7 @@ from ingest.md_parser import MdParser
 from ingest.pdf_parser import PdfParser
 from ingest.txt_parser import TxtParser
 from ingest.image_parser import ImageParser
+from ingest.audio_parser import AudioParser
 
 _PARSER_DICT = {".md": MdParser,
                 ".pdf": PdfParser,
@@ -13,7 +14,10 @@ _PARSER_DICT = {".md": MdParser,
                 ".webp":ImageParser,
                 ".jpg":ImageParser,
                 ".png":ImageParser,
-                "jpeg":ImageParser}
+                "jpeg":ImageParser,
+                ".mp3":AudioParser,
+                ".wav":AudioParser,
+                ".m4a":AudioParser}
 
 def get_parser(path:str|Path)->Parser:
     p=Path(path)

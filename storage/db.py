@@ -53,4 +53,6 @@ def init_tables():
                 )
             """)
             cur.execute("CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(doc_id)")
+            cur.execute("ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_hash TEXT")
+            cur.execute("ALTER TABLE chunks ADD COLUMN IF NOT EXISTS embedding vector(1024)")
         conn.commit()
