@@ -1,0 +1,31 @@
+# ADR 002 · 评估体系设计（自研三指标 + RAGAS 对照规划）
+
+日期：2026-11-15 ｜ 状态：轻量版已实现，完整对照待知识库扩容
+
+## 背景
+DocMind 需要量化两个层级的质量：检索层（能否召回正确内容）与生成层（回答是否忠实于检索内容）。
+业界标准 RAGAS 提供四指标（faithfulness/answer relevancy/context precision/context recall），
+但其运行前提（大知识库 + 大评估集 + OpenAI 兼容生成链路）当前不完全具备。
+
+## 决策
+自研轻量评估先行，完整 RAGAS 对照延后：
+1. 检索层：命中率（hit@3，关键词判定）+ rerank 开关对照 —— 已实现（evaluation/eval_retrieval.py）
+2. 生成层：faithfulness 三态轻量版（LLM-as-judge 整体判定）—— 已实现（evaluation/faithfulness.py）
+3. 完整对照（待知识库扩容到千级 Chunk 后）：
+   - 引入 RAGAS 跑四指标
+   - 自研 faithfulness 与 RAGAS faithfulness 的相关性对照
+   - 差异分析报告（作为"自研 vs 标准"的方法论资产）
+
+## 取舍记录
+- 三态设计（True/False/None）：评估器自身故障（LLM 超时/解析失败）不污染评估结论
+  ——None 明确表示"未知"，与 False（确认不忠实）严格区分
+- 整体判定 vs 逐断言拆解：轻量版选择整体判定（1 次 LLM 调用），完整版逐断言
+  （成本×3-5）——小评估集（15例）下整体判定成本可控且结论够用
+- 关键词 hit 判定的局限：字面匹配，语义同义（"长肌肉"→"蛋白质"）依赖向量检索
+  先命中，hit 判定只做确认——已知局限，评估集持续迭代
+
+## 已知盲区（2026-11-14 实测发现）
+- faithfulness=True + 检索 MISS 的"诚实越界"案例：模型用通用知识回答，未编造
+  （faithful=True）但也未使用知识库（检索 MISS）——单 faithfulness 指标测不出
+  "本该由知识库回答的问题被通用知识回答"的情况，需要 answer relevance 维度补充
+  ——记入完整版 RAGAS 对照的设计输入
