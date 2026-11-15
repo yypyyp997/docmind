@@ -67,7 +67,7 @@ class VideoParser(Parser):
                     # 静音音轨转写为空：跳过音轨，继续画面帧（鲁棒性）
                     pass
 
-            # 画面 → 按间隔抽帧 → ImageParser
+            # 画面 → 按间隔抽帧 → ImageParser（0 帧时保底抽 3 帧：首/中/尾）
             n_frames = min(self.max_frames, max(1, int(duration // self.frame_interval) + 1))
             frame_pattern = tmp_dir / "frame_%03d.png"
             _run_ffmpeg([
@@ -77,6 +77,14 @@ class VideoParser(Parser):
                 str(frame_pattern),
             ])
             frame_files = sorted(tmp_dir.glob("frame_*.png"))
+            if not frame_files and duration > 0:
+                # 保底策略：短视频按间隔抽不出帧时，抽首/中/尾 3 帧
+                for seek in (0, duration / 2, max(duration - 0.1, 0)):
+                    fallback = tmp_dir / f"fallback_{int(seek * 10)}.png"
+                    _run_ffmpeg(["-ss", f"{seek:.1f}", "-i", str(p), "-frames:v", "1",
+                                 str(fallback)])
+                frame_files = sorted(tmp_dir.glob("fallback_*.png"))
+
             img_parser = ImageParser()
             for i, frame in enumerate(frame_files[: self.max_frames]):
                 timestamp = i * self.frame_interval
