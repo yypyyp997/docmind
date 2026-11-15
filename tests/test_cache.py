@@ -20,6 +20,7 @@ def test_incr_counter():
 
 def test_rate_limit_blocks_after_limit():
     """限流：超过 limit 后拒绝"""
+    cache._get_client().delete("test:rate")    # 清掉历史计数（测试隔离）
     results = [cache.check_rate_limit("test:rate", limit=3, window=60) for _ in range(5)]
     assert results == [True, True, True, False, False]
 
