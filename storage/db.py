@@ -5,22 +5,19 @@
 - get_connection() 每次返回独立连接（简单可靠；连接池等上量后再优化——记录在案）
 - init_tables() 幂等：CREATE TABLE IF NOT EXISTS，跑多少遍表结构都一样
 """
-import os
-
 import psycopg
-from dotenv import load_dotenv
 
+from config.settings import settings
 from utils.exceptions import StorageError
 
-load_dotenv()
-# DATABASE_URL 从环境变量读；开发环境缺省值指向本地 compose 的 PG
-DEFAULT_URL = "postgresql://docmind:***@localhost:15432/docmind"
 
 def get_connection():
-    """返回一个新的独立数据库连接。用完由调用方 close（配合 with 使用）。"""
-    url = os.getenv("DATABASE_URL", DEFAULT_URL)
+    """返回一个新的独立数据库连接。用完由调用方 close（配合 with 使用）。
+
+    连接串统一从 config.settings 读取（.env 驱动，配置中心唯一来源）。
+    """
     try:
-        return psycopg.connect(url)
+        return psycopg.connect(settings.DATABASE_URL)
     except psycopg.OperationalError as e:
         raise StorageError(f"数据库连接失败（服务没起？地址密码对吗？）: {e}") from e
 
