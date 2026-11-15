@@ -4,7 +4,7 @@
 （返回 None/False/0），绝不抛异常——Redis 是加速层不是必需依赖，
 它挂了系统必须照常工作（直查 PG）。
 """
-import os
+from config.settings import settings
 
 import redis
 
@@ -14,7 +14,7 @@ def _get_client():
     """惰性单例连接。REDIS_URL 未配置或连接失败 → None（降级信号）。"""
     global _client
     if _client is None:
-        url = os.getenv("REDIS_URL")
+        url = settings.REDIS_URL or None
         if not url:
             return None
         try:

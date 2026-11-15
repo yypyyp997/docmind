@@ -18,11 +18,20 @@ def test_incr_counter():
     b = cache.incr_counter("test:counter")
     assert b == a + 1
 
-def test_rate_limit_blocks_after_limit():
-    """限流：超过 limit 后拒绝"""
-    cache._get_client().delete("test:rate")    # 清掉历史计数（测试隔离）
+def test_rate_limit_blocks_after_limit(monkeypatch):
+    """限流：超过 limit 后拒绝（隔离 DB，不受其他测试污染）"""
+    import redis as redis_mod
+    from config.settings import settings
+    iso_client = redis_mod.Redis.from_url(
+        settings.REDIS_URL.replace("/0", "/15"),        # 15 号库：测试专用
+        decode_responses=True,
+    )
+    iso_client.delete("test:rate")                      # 先清
+    monkeypatch.setattr(cache, "_get_client", lambda: iso_client)
     results = [cache.check_rate_limit("test:rate", limit=3, window=60) for _ in range(5)]
     assert results == [True, True, True, False, False]
+    iso_client.flushdb()                                 # 收尾清理测试库
+
 
 def test_degraded_when_no_redis(monkeypatch):
     """降级：Redis 不可用时全部静默降级（核心契约！）"""
