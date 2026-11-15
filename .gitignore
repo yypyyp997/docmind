@@ -9,3 +9,4 @@ logs/
 evaluation/results/
 .pytest_cache/
 sample_docs/
+docs/official/
