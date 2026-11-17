@@ -5,6 +5,9 @@ langchain-community
 langgraph
 langchain-postgres        # pgvector 集成
 psycopg[binary]           # PostgreSQL 驱动
+sqlalchemy>=2.0           # Alembic 依赖（迁移引擎）
+alembic>=1.13             # schema 迁移（Phase 2 引入）
+pgvector>=0.3             # Vector(1024) SQLAlchemy 类型
 fastapi
 uvicorn[standard]
 pydantic
@@ -12,9 +15,8 @@ pydantic-settings
 python-dotenv
 pypdf
 python-docx
-dashscope
-redis                     # Phase 5
-mcp                       # Phase 7
-redis
-# 测试
+dashscope>=2.0            # 千问系模型 SDK
+redis>=8.1               # Phase 5
+mcp<2                     # Phase 7（2.x FastMCP 改名不兼容，钉 1.x）
+# 测试（PIL/pillow 仅 video_parser 测试用，可选：pip install pillow）
 pytest
