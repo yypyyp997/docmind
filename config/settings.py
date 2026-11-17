@@ -1,11 +1,14 @@
+# -*- coding: utf-8 -*-
 """DocMind 配置中心：.env 驱动（pydantic-settings），占位符默认值 + env_file 加载。
 
-设计原则（2026-11-17 定稿）：
+设计原则：
 - 占位符默认值没问题——问题从来是「.env 是否被加载」
 - model_config 的 env_file 是生命线：没有它 pydantic-settings 不读 .env，
   全部字段回退默认值（占位符密码 → 认证失败连环坑的真正根因）
-- DASHSCOPE_API_KEY 用 SecretStr：日志打印自动掩码
+- DASHSCOPE_API_KEY 用 SecretStr：日志打印自动掩码；
+  模块取真实值必须 .get_secret_value()（str() 会拿到掩码）
 - 双库支持：DATABASE_URL（开发）+ TEST_DATABASE_URL（测试），ENV 切换
+- 全项目配置唯一来源：任何模块禁止私自 os.getenv / load_dotenv
 """
 from pathlib import Path
 
@@ -20,16 +23,20 @@ class Settings(BaseSettings):
     DASHSCOPE_API_KEY: SecretStr = SecretStr("")       # .env 里有值则覆盖
 
     # ---- 数据库（占位符默认值：.env 加载后必被覆盖）----
-    DATABASE_URL: str = "postgresql://docmind:PLACEHOLDER_PWD@localhost:15432/docmind"
-    TEST_DATABASE_URL: str = "postgresql://docmind:PLACEHOLDER_PWD@localhost:15432/docmind_test"
+    DATABASE_URL: str = "postgresql://docmind:***@localhost:15432/docmind"
+    TEST_DATABASE_URL: str = "postgresql://docmind:***@localhost:15432/docmind_test"
     ENV: str = "dev"                         # "dev" = 开发库 / "test" = 测试库
 
-    # ---- Redis（Phase 5）----
+    # ---- Redis ----
     REDIS_URL: str = "redis://localhost:16379/0"
 
     # ---- API 服务 ----
     API_KEY: SecretStr = SecretStr("")       # 空 = 开发模式（API 跳过认证）
     DOCS_BASE_DIR: str = str(Path(__file__).resolve().parent.parent / "docs" / "official")
+
+    # ---- 日志 ----
+    LOG_LEVEL: str = "INFO"                  # DEBUG / INFO / WARNING / ERROR
+    LOG_FORMAT: str = "console"              # console = 人类可读 / json = 结构化（生产）
 
     # ---- 检索参数 ----
     SEARCH_TOP_K: int = 3

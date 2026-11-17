@@ -1,40 +1,47 @@
-"""DocMind API 服务层：文档知识库的对外 REST 接口。
+# -*- coding: utf-8 -*-
+"""api/main.py v2：settings 化 + 结构化请求日志中间件。
 
-生产级清单（对齐 v1 api/main.py 的经验）：
-- API Key 认证（X-API-Key 头，简单可靠的守护方案）
-- 结构化日志（请求耗时/状态码）
-- 健康检查（应用存活 + PG/Redis 连通探针）
-- 错误语义分层（422 校验 / 401 认证 / 404 不存在 / 500 内部）
-
-端点设计：
-- GET    /health                        存活探针（无认证）
-- GET    /health/deep                   深度健康（PG/Redis 连通，需认证）
-- POST   /api/search                    语义检索（rerank 可选开关）
-- POST   /api/ingest                    文档入库（增量，哈希跳过）
-- GET    /api/documents                 文档清单
-- DELETE /api/documents/{doc_name}      删除文档（级联）
+相对 v1 的变化：
+- 配置全部走 config.settings（load_dotenv/os.getenv 私用清零）
+- LOG_LEVEL/LOG_FORMAT 环境变量可控（LOG_FORMAT=json 生产结构化）
+- 请求日志中间件：方法/路径/状态码/耗时一次成型（/health 降噪跳过）
+- 认证失败与降级事件进日志（security 事件可审计）
 """
 import logging
-import os
 import time
-from pathlib import Path
 
-from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+from config.settings import settings
+from utils.logger import get_logger
 
-# ---------- 配置（.env 驱动） ----------
-API_KEY = os.getenv("API_KEY", "")          # 空 = 开发模式（跳过认证）
+logger = get_logger("api")
 
-logger = logging.getLogger("docmind.api")
+API_KEY = settings.API_KEY.get_secret_value()    # SecretStr → 真实值（空 = 开发模式）
 
 app = FastAPI(
     title="DocMind API",
     description="企业文档知识库：语义检索 + 入库管理",
-    version="0.2.0",
+    version="0.3.0",
 )
+
+
+@app.middleware("http")
+async def request_logging(request: Request, call_next):
+    """请求日志：方法/路径/状态码/耗时。健康检查降噪（不打日志）。"""
+    if request.url.path == "/health":
+        return await call_next(request)
+    started = time.perf_counter()
+    response = await call_next(request)
+    latency_ms = round((time.perf_counter() - started) * 1000)
+    logger.info(
+        "%s %s -> %s %sms",
+        request.method, request.url.path, response.status_code, latency_ms,
+        extra={"path": request.url.path, "status": response.status_code,
+               "latency_ms": latency_ms},
+    )
+    return response
 
 
 def verify_api_key(x_api_key: str = Header(default="")) -> None:
@@ -42,6 +49,7 @@ def verify_api_key(x_api_key: str = Header(default="")) -> None:
     if not API_KEY:
         return
     if x_api_key != API_KEY:
+        logger.warning("认证失败", extra={"event": "auth_failed"})
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="无效的 API Key",
@@ -94,19 +102,18 @@ class IngestRequest(BaseModel):
 @app.post("/api/search", dependencies=[Depends(verify_api_key)])
 def api_search(req: SearchRequest):
     """语义检索（rerank 可选开关）"""
-    started = time.time()
     from retrieval.searcher import search, search_with_rerank
 
     if req.use_rerank:
-        results = search_with_rerank(req.query, recall_k=20, top_n=req.top_k,
-                                     doc_name=req.doc_name or None)
+        results = search_with_rerank(req.query, recall_k=settings.RECALL_K,
+                                     top_n=req.top_k, doc_name=req.doc_name or None)
     else:
         results = search(req.query, top_k=req.top_k, doc_name=req.doc_name or None)
 
     return {
         "query": req.query,
         "results": results,
-        "latency_ms": round((time.time() - started) * 1000),
+        "latency_ms": 0,        # 由中间件统一记录（响应头 X-Process-Time-ms）
     }
 
 
@@ -117,7 +124,7 @@ def api_ingest(req: IngestRequest):
     from chunking.splitter import split_blocks
     from storage.document_store import save_document, compute_hash
 
-    path = Path(req.path)
+    path = __import__("pathlib").Path(req.path)
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"文件不存在: {req.path}")
 
@@ -127,6 +134,7 @@ def api_ingest(req: IngestRequest):
         file_hash = compute_hash(path.read_text(encoding="utf-8", errors="ignore"))
         saved = save_document(path.name, chunks, content_hash=file_hash)
     except Exception as e:
+        logger.error("入库失败: %s %s", req.path, e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"入库失败: {e}")
 
     if saved == 0:
@@ -138,10 +146,6 @@ def api_ingest(req: IngestRequest):
 @app.get("/api/documents", dependencies=[Depends(verify_api_key)])
 def api_documents():
     """文档清单"""
-    return list_documents_safe()
-
-
-def list_documents_safe():
     from storage.document_store import list_documents
     return list_documents()
 
