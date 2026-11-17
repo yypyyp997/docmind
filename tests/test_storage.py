@@ -34,7 +34,10 @@ def _setup_test_db():
     init_tables()
     yield
     with psycopg.connect(TEST_URL, autocommit=True) as conn:
-        conn.execute("TRUNCATE chunks, documents CASCADE")
+        try:
+            conn.execute("TRUNCATE chunks, documents CASCADE")
+        except psycopg.errors.UndefinedTable:
+            pass        # 表不存在（本模块用例未建表）：跳过清理
 
 def _mk(name, idx, path, body):
     return Chunk(content=f"{path}\n{body}", doc_name=name, page=1,
