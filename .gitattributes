@@ -1,0 +1,14 @@
+# 行尾统一规范：仓库与工作区一律 LF（Windows 下 Python/PyCharm 均兼容）
+* text=auto eol=lf
+
+# 二进制文件保护（禁止行尾转换破坏文件）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.pdf binary
+*.mp3 binary
+*.mp4 binary
+*.docx binary
+*.xlsx binary
+*.ico binary
