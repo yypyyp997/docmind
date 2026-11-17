@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """api/main.py v2：settings 化 + 结构化请求日志中间件。
 
 相对 v1 的变化：
@@ -18,7 +17,7 @@ from utils.logger import get_logger
 
 logger = get_logger("api")
 
-API_KEY = settings.API_KEY.get_secret_value()    # SecretStr → 真实值（空 = 开发模式）
+API_KEY = settings.API_KEY.get_secret_value()    # SecretStr -> 真实值（空 = 开发模式）
 
 app = FastAPI(
     title="DocMind API",
@@ -98,6 +97,10 @@ class SearchRequest(BaseModel):
 class IngestRequest(BaseModel):
     path: str = Field(..., description="文档绝对路径（服务与解析同机的部署形态）")
 
+class AskRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=500)
+    doc_name: str = ""
+    top_k: int = Field(3, ge=1, le=20)
 
 @app.post("/api/search", dependencies=[Depends(verify_api_key)])
 def api_search(req: SearchRequest):
@@ -159,3 +162,28 @@ def api_delete_document(doc_name: str):
         raise HTTPException(status_code=404, detail=f"文档不存在: {doc_name}")
     deleted = delete_document(doc_name)
     return {"status": "deleted", "doc_name": doc_name, "chunks_removed": deleted}
+
+@app.post("/api/ask", dependencies=[Depends(verify_api_key)])
+def api_ask(req: AskRequest):
+    """文档问答：完整 RAG 链路（检索 → 生成 → 引用溯源）。
+
+    LLM 失败时降级：status=degraded + 返回检索切片（有结果总好过空手而归）。
+    """
+    from agent.graph import ask
+
+    result = ask(req.question, doc_name=req.doc_name, top_k=req.top_k)
+
+    if result["llm_error"]:
+        return {
+            "status": "degraded",
+            "detail": f"生成失败: {result['llm_error']}",
+            "query": req.question,
+            "results": result["contexts"],
+        }
+    return {
+        "status": "ok",
+        "query": req.question,
+        "answer": result["answer"],
+        "sources": result["sources"],
+        "contexts": result["contexts"],
+    }

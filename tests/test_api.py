@@ -69,3 +69,50 @@ def test_documents_list_returns_list():
     resp = client.get("/api/documents")
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
+
+
+# ---------- 问答端点（agent 层接入） ----------
+
+from unittest.mock import patch, MagicMock
+
+
+class TestAskEndpoint:
+    @patch("agent.graph._generate")
+    @patch("retrieval.searcher.search_with_rerank")
+    def test_ask_ok(self, mock_search, mock_gen):
+        """问答成功：answer + sources 结构完整（LLM 与检索全 mock，零成本）。"""
+        mock_search.return_value = [
+            {"heading_path": "依赖注入", "content": "FastAPI 依赖注入系统", "page": None,
+             "doc_name": "features.md", "distance": 0.2}
+        ]
+        mock_gen.return_value = {"context_text": "[1] ...", "answer": "依赖注入是 [1]。",
+                                 "llm_error": ""}
+        resp = client.post("/api/ask", json={"question": "什么是依赖注入？"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "ok"
+        assert body["answer"] == "依赖注入是 [1]。"
+        assert body["sources"][0]["doc_name"] == "features.md"
+        assert body["contexts"][0]["heading_path"] == "依赖注入"
+
+    @patch("agent.graph._generate")
+    @patch("retrieval.searcher.search_with_rerank")
+    def test_ask_llm_failure_degrades(self, mock_search, mock_gen):
+        """LLM 失败 → status=degraded + 返回检索切片（降级契约）。"""
+        mock_search.return_value = [
+            {"heading_path": "中间件", "content": "middleware 内容", "page": None,
+             "doc_name": "features.md", "distance": 0.3}
+        ]
+        mock_gen.return_value = {"context_text": "[1] ...", "answer": "",
+                                 "llm_error": "API InternalError: boom"}
+        resp = client.post("/api/ask", json={"question": "中间件怎么写？"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["status"] == "degraded"
+        assert "InternalError" in body["detail"]
+        assert body["results"][0]["content"] == "middleware 内容"
+
+    def test_ask_validation_empty_question(self):
+        """空问题 → 422（pydantic 校验）"""
+        resp = client.post("/api/ask", json={"question": ""})
+        assert resp.status_code == 422
