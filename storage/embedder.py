@@ -3,13 +3,12 @@
 批量规则：DashScope 单次请求最多 25 条文本，超过自动分批。
 失败契约：API 异常/状态码非 200/维度不符 → EmbeddingError（带原因）。
 """
-import os
 import dashscope
+from config.settings import settings
 
 EMBED_DIM=1024
 MODEL="text-embedding-v4"
 BATCH_LIMIT=10
-API_KEY=os.getenv("DASHSCOPE_API_KEY")
 
 class EmbeddingError(Exception):
     """向量化失败的统一异常：Key 缺失/接口失败/维度不符都用它。"""
@@ -22,9 +21,9 @@ def embed_texts(texts:list[str])->list[list[float]]:
     """
     if not texts:
         return []
-    api_key=os.getenv("DASHSCOPE_API_KEY")
+    api_key = settings.DASHSCOPE_API_KEY.get_secret_value()
     if not api_key:
-        raise EmbeddingError("环境变量 DASHSCOPE_API_KEY 未设置，无法向量化")
+        raise EmbeddingError("DASHSCOPE_API_KEY 未设置（.env / settings），无法向量化")
     batches=[texts[i:i+BATCH_LIMIT] for i in range(0,len(texts),BATCH_LIMIT)]
     vectors:list[list[float]]=[]
     for batch_no,batch in enumerate(batches,start=1):

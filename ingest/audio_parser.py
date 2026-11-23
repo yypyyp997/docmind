@@ -8,10 +8,9 @@
 
 前置：DASHSCOPE_API_KEY 已配置（.env），paraformer-v2 模型可用。
 """
-import os
 import time
 from pathlib import Path
-
+from config.settings import settings
 from ingest.base import Block, ParsingError ,Parser
 
 SUPPORTED_EXTS = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".opus"}
@@ -28,10 +27,10 @@ def _poll_task(api_key: str, task_id: str, max_wait: int = 300) -> dict:
     import dashscope
     deadline = time.time() + max_wait
     while time.time() < deadline:
-        result = dashscope.AsyncTask.fetch(task=task_id, api_key=api_key)
+        result = dashscope.audio.asr.Transcription.fetch(task=task_id, api_key=api_key)
         if result.status_code != 200:
             raise TranscribeError(f"任务查询失败 code={result.status_code}: {result.message}")
-        task = result.output.task
+        task = result.output.task_status
         if task == "FAILED":
             msg = getattr(result.output, "message", "") or "未知原因"
             raise TranscribeError(f"转写任务失败: {msg}")
@@ -52,9 +51,9 @@ class AudioParser(Parser):
         if p.stat().st_size > 2 * 1024 * 1024 * 1024:
             raise ParsingError(f"音频文件过大（>2GB）: {p}")
 
-        api_key = os.getenv("DASHSCOPE_API_KEY")
+        api_key = settings.DASHSCOPE_API_KEY.get_secret_value()
         if not api_key:
-            raise ParsingError("环境变量 DASHSCOPE_API_KEY 未设置，无法转写音频")
+            raise ParsingError("DASHSCOPE_API_KEY 未设置（.env / settings），无法转写音频")
 
         file_url = f"file://{p.resolve()}"
         try:
@@ -63,6 +62,7 @@ class AudioParser(Parser):
                 model=ASR_MODEL,
                 file_urls=[file_url],
                 language_hints=["zh"],
+                api_key=api_key
             )
             if resp.status_code != 200:
                 raise TranscribeError(f"提交转写任务失败 code={resp.status_code}: {resp.message}")

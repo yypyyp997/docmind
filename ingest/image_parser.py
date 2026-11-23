@@ -9,9 +9,8 @@
 前置：DASHSCOPE_API_KEY 已配置（.env），qwen-vl-max 模型可用。
 """
 import base64
-import os
 from pathlib import Path
-
+from config.settings import settings
 from ingest.base import Block, Parser, ParsingError
 
 SUPPORTED_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
@@ -34,10 +33,9 @@ class ImageParser(Parser):
         if p.suffix.lower() not in SUPPORTED_EXTS:
             raise ParsingError(f"不支持的图片格式: {p.suffix}（支持: {sorted(SUPPORTED_EXTS)}）")
 
-        api_key = os.getenv("DASHSCOPE_API_KEY")
+        api_key = settings.DASHSCOPE_API_KEY.get_secret_value()
         if not api_key:
-            raise ParsingError("环境变量 DASHSCOPE_API_KEY 未设置，无法做图片视觉描述")
-
+            raise ParsingError("DASHSCOPE_API_KEY 未设置（.env / settings），无法做图片视觉描述")
         data_url = _image_to_data_url(p)
         try:
             import dashscope
@@ -48,9 +46,10 @@ class ImageParser(Parser):
                     "content": [
                         {"image": data_url},
                         {"text": "请详细描述这张图片的内容：图中有什么对象、文字、图表或流程？"
-                         "如果是架构图或流程图，请描述其结构和各部分的关系。"},
+                                 "如果是架构图或流程图，请描述其结构和各部分的关系。"},
                     ],
                 }],
+                api_key=api_key,
             )
         except Exception as e:
             raise ParsingError(f"视觉模型调用失败: {e}") from e

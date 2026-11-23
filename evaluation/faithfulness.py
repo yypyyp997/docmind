@@ -5,10 +5,8 @@
 faithfulness 量化"语义上的支持度"。
 """
 import json
-import os
-
 import dashscope
-
+from config.settings import settings
 FAITHFULNESS_PROMPT = """你是评估专家。判断【回答】是否被【参考内容】支持。
 
 判定规则：
@@ -29,7 +27,7 @@ def judge_faithfulness(question: str, context: str, answer: str) -> dict:
     异常契约：LLM 调用失败或 JSON 解析失败 → 返回 {"faithful": None, "error": "..."}
     （None 表示"评估失败"，与 False（确认不忠实）区分——评估器自身故障不能污染评估结果）
     """
-    api_key = os.getenv("DASHSCOPE_API_KEY")
+    api_key = settings.DASHSCOPE_API_KEY.get_secret_value()
     if not api_key:
         return {"faithful": None, "error": "DASHSCOPE_API_KEY 未设置"}
 

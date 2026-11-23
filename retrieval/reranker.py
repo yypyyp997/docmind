@@ -7,9 +7,9 @@
 为什么分两阶段：召回快但粗（双编码器分别编码，精度有限），
 精排准但慢（逐对计算，条数多了耗时线性涨）——20→3 是精度/成本平衡点。
 """
-import os
 
 import dashscope
+from config.settings import settings
 
 EMBED_MODEL_PLACEHOLDER = None   # 本模块不涉及 embedding
 class RerankError(Exception):
@@ -32,9 +32,9 @@ def rerank(query: str, docs: list[dict], top_n: int = 3) -> list[dict]:
         out["rerank_score"] = None
         return [out]
 
-    api_key = os.getenv("DASHSCOPE_API_KEY")
+    api_key = settings.DASHSCOPE_API_KEY.get_secret_value()
     if not api_key:
-        raise RerankError("环境变量 DASHSCOPE_API_KEY 未设置，无法精排")
+        raise RerankError("DASHSCOPE_API_KEY 未设置（.env / settings），无法精排")
 
     resp = dashscope.TextReRank.call(
         model="gte-rerank-v2",

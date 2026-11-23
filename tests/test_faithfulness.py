@@ -1,5 +1,4 @@
 """faithfulness 轻量版单测：真实 LLM 判定 + Key 缺失契约。真实调用消耗少量额度。"""
-import os
 
 import pytest
 
@@ -24,14 +23,11 @@ def test_hallucinated_answer():
     assert result["faithful"] is False
     assert len(result["unsupported_claims"]) >= 1
 
-def test_missing_key_contract():
+def test_missing_key_contract(monkeypatch):
     """Key 缺失 → faithful=None（评估器故障不污染结果）"""
-    old = os.environ.get("DASHSCOPE_API_KEY")
-    if old:
-        del os.environ["DASHSCOPE_API_KEY"]
-    try:
-        result = judge_faithfulness("q", "c", "a")
-        assert result["faithful"] is None
-    finally:
-        if old:
-            os.environ["DASHSCOPE_API_KEY"] = old
+    from pydantic import SecretStr
+
+    from config.settings import settings
+    monkeypatch.setattr(settings, "DASHSCOPE_API_KEY", SecretStr(""))
+    result = judge_faithfulness("q", "c", "a")
+    assert result["faithful"] is None

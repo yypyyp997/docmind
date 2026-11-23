@@ -18,7 +18,9 @@ def test_missing_file_raises(tmp_path):
 
 def test_missing_key_raises(tmp_path, monkeypatch):
     """Key 缺失 → ParsingError（在 API 提交前拦截）"""
-    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    from pydantic import SecretStr
+    from config.settings import settings
+    monkeypatch.setattr(settings, "DASHSCOPE_API_KEY", SecretStr(""))
     f = tmp_path / "test.mp3"
     f.write_bytes(b"fake-audio-content")
     with pytest.raises(ParsingError):

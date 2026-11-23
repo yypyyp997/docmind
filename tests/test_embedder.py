@@ -16,6 +16,9 @@ def test_empty_list_returns_empty():
 
 def test_missing_api_key_raises(monkeypatch):
     """Key 缺失 → EmbeddingError"""
-    monkeypatch.delenv("DASHSCOPE_API_KEY", raising=False)
+    from pydantic import SecretStr
+
+    from config.settings import settings
+    monkeypatch.setattr(settings, "DASHSCOPE_API_KEY", SecretStr(""))
     with pytest.raises(EmbeddingError):
         embed_texts(["任意文本"])
