@@ -3,10 +3,6 @@
 metadata filter 顺路支持：doc_name 参数可按文档过滤（企业 RAG 标准能力）。
 检索返回带 distance（越小越相似），调用方自己决定取多少。
 """
-from dotenv import load_dotenv
-load_dotenv()
-
-import os
 
 from storage.db import get_connection
 from storage.embedder import embed_texts

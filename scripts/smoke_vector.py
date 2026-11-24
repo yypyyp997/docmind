@@ -31,8 +31,9 @@ q = embed_texts(["深蹲安全注意事项"])
 qvec = q[0]
 
 # 3. 向量检索：pgvector 的 cosine 距离运算符 <=>，取最近 2 条
-import psycopg, os
-url = os.getenv("DATABASE_URL")
+import psycopg
+from config.settings import settings
+url = settings.DATABASE_URL
 with psycopg.connect(url) as conn:
     with conn.cursor() as cur:
         cur.execute(

@@ -18,6 +18,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
+# 独立进程入口：显式加载 .env 作为启动引导（settings 的 env_file 是绝对路径，本行属冗余防御，
+# 但 MCP 客户端以任意 cwd 启动本脚本，保留以隔离 cwd 差异——删除前须验证全部 MCP 工具链路）
 load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 from mcp.server.fastmcp import FastMCP
