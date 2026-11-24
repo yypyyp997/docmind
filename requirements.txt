@@ -1,7 +1,4 @@
 # 核心（Phase 1 起逐步安装）
-langchain>=0.3
-langchain-core
-langchain-community
 langgraph
 langchain-postgres        # pgvector 集成
 psycopg[binary]           # PostgreSQL 驱动
