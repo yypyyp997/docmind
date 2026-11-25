@@ -12,7 +12,7 @@
 """
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     # ---- 检索参数 ----
     SEARCH_TOP_K: int = 3
     RECALL_K: int = 20
+
+    @field_validator("DASHSCOPE_API_KEY", "API_KEY", mode="before")
+    @classmethod
+    def _strip_secret_whitespace(cls, v):
+        """剥离密钥首尾空白——CI Secret/手工粘贴常带行尾换行，
+        带换行的 key 放不进 HTTP 头（requests 抛 InvalidHeader）。"""
+        return v.strip() if isinstance(v, str) else v
 
     @property
     def ACTIVE_DATABASE_URL(self) -> str:
