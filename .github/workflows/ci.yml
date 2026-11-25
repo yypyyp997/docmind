@@ -1,0 +1,56 @@
+name: CI
+
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: docmind
+          POSTGRES_PASSWORD: docmind123
+          POSTGRES_DB: docmind
+        ports:
+          - 15432:5432
+        options: >-
+          --health-cmd "pg_isready -U docmind"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 16379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://docmind:docmind123@localhost:15432/docmind
+      TEST_DATABASE_URL: postgresql://docmind:docmind123@localhost:15432/docmind_test
+      REDIS_URL: redis://localhost:16379/0
+      DASHSCOPE_API_KEY: ${{ secrets.DASHSCOPE_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 创建测试库（compose initdb 的 CI 等价物）
+        run: PGPASSWORD=docmind123 psql -h localhost -p 15432 -U docmind -d docmind -c "CREATE DATABASE docmind_test;"
+
+      - name: 双库迁移建表
+        run: |
+          python -m alembic upgrade head
+          ENV=test python -m alembic upgrade head
+
+      - name: pytest 全量
+        run: python -m pytest

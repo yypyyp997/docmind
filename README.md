@@ -1,4 +1,5 @@
 # DocMind · 企业文档智能问答
+[![CI](https://github.com/yypyyp997/docmind/actions/workflows/ci.yml/badge.svg)](https://github.com/yypyyp997/docmind/actions/workflows/ci.yml)
 
 面向企业文档场景的 RAG + Agent 智能问答系统：多格式文档解析 → 结构感知切分 → 向量检索（pgvector）→ 重排 → 引用溯源回答。
 
