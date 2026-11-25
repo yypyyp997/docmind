@@ -101,6 +101,7 @@ class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500)
     doc_name: str = ""
     top_k: int = Field(3, ge=1, le=20)
+    session_id: str = ""     # 多轮：回传上次响应的 session_id 续会话；空 = 新会话
 
 @app.post("/api/search", dependencies=[Depends(verify_api_key)])
 def api_search(req: SearchRequest):
@@ -167,11 +168,21 @@ def api_delete_document(doc_name: str):
 def api_ask(req: AskRequest):
     """文档问答：完整 RAG 链路（检索 → 生成 → 引用溯源）。
 
+    多轮对话：请求带 session_id 时按分层记忆装配历史（短窗+语义召回）；
+    不带则新建会话，响应回传 session_id，客户端回传即可多轮。
     LLM 失败时降级：status=degraded + 返回检索切片（有结果总好过空手而归）。
     """
     from agent.graph import ask
+    from storage.chat_store import assemble_history, new_session_id, save_exchange
+    from storage.embedder import embed_texts
 
-    result = ask(req.question, doc_name=req.doc_name, top_k=req.top_k)
+    query_vector = embed_texts([req.question.strip()])[0]
+    history = assemble_history(req.session_id, query_vector) if req.session_id else []
+    result = ask(req.question, doc_name=req.doc_name, top_k=req.top_k,
+                 query_vector=query_vector, history=history)
+    session_id = req.session_id or new_session_id()
+    if result["answer"]:
+        save_exchange(session_id, req.question, result["answer"], query_vector)
 
     if result["llm_error"]:
         return {
@@ -179,6 +190,7 @@ def api_ask(req: AskRequest):
             "detail": f"生成失败: {result['llm_error']}",
             "query": req.question,
             "results": result["contexts"],
+            "session_id": session_id,
         }
     return {
         "status": "ok",
@@ -186,4 +198,5 @@ def api_ask(req: AskRequest):
         "answer": result["answer"],
         "sources": result["sources"],
         "contexts": result["contexts"],
+        "session_id": session_id,
     }

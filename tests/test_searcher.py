@@ -52,3 +52,13 @@ def test_empty_query_returns_empty():
     """空查询 → 空结果（不发请求）"""
     assert search("") == []
     assert search("   ") == []
+
+def test_query_vector_reuse_equivalent():
+    """向量复用契约：传预计算向量与传文本，检索结果一致"""
+    from storage.embedder import embed_texts
+
+    qvec = embed_texts(["深蹲安全注意事项"])[0]
+    by_text = search("深蹲安全注意事项", top_k=3)
+    by_vector = search("深蹲安全注意事项", top_k=3, query_vector=qvec)
+    assert by_vector, "预计算向量路径应有结果"
+    assert [r["content"] for r in by_vector] == [r["content"] for r in by_text]
