@@ -7,7 +7,8 @@ metadata filter 顺路支持：doc_name 参数可按文档过滤（企业 RAG �
 from storage.db import get_connection
 from storage.embedder import embed_texts
 
-def search(query: str, top_k: int = 5, doc_name: str | None = None) -> list[dict]:
+def search(query: str, top_k: int = 5, doc_name: str | None = None,
+           query_vector: list[float] | None = None) -> list[dict]:
     """语义检索：返回与 query 语义最近的 top_k 个 Chunk。
 
     :param query: 自然语言查询
@@ -19,7 +20,7 @@ def search(query: str, top_k: int = 5, doc_name: str | None = None) -> list[dict
     if not query or not query.strip():
         return []
 
-    qvec = embed_texts([query.strip()])[0]
+    qvec = query_vector if query_vector is not None else embed_texts([query.strip()])[0]
 
     # 查询向量出现两次（WHERE 前缀判断占位不需要，ORDER BY 和 SELECT 各一次）
     sql = """SELECT c.heading_path, c.content, c.page, d.doc_name,
@@ -52,13 +53,14 @@ def search(query: str, top_k: int = 5, doc_name: str | None = None) -> list[dict
     ]
 
 def search_with_rerank(query: str, recall_k: int = 20, top_n: int = 3,
-                       doc_name: str | None = None) -> list[dict]:
+                       doc_name: str | None = None,
+                       query_vector: list[float] | None = None) -> list[dict]:
     """两阶段检索：先召回 recall_k 条，再精排取 top_n。
 
     reranker 在函数体内 import（避免 searcher↔reranker 循环导入风险）。
     精排失败时降级返回召回结果（不因精排挂而丢掉整个检索）。
     """
-    recall = search(query, top_k=recall_k, doc_name=doc_name)
+    recall = search(query, top_k=recall_k, doc_name=doc_name, query_vector=query_vector)
     from retrieval.reranker import rerank
     try:
         return rerank(query, recall, top_n=top_n)

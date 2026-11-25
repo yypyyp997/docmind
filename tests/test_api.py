@@ -116,3 +116,37 @@ class TestAskEndpoint:
         """空问题 → 422（pydantic 校验）"""
         resp = client.post("/api/ask", json={"question": ""})
         assert resp.status_code == 422
+
+class TestAskSession:
+    """多轮会话：session 回传 + 分层装配历史进提示词（真实 PG，mock 向量化/LLM/检索）。"""
+
+    def _ask(self, question, session_id="", answer="依赖注入是 FastAPI 核心机制"):
+        with patch("storage.embedder.embed_texts") as mock_embed, \
+             patch("dashscope.Generation.call") as mock_llm, \
+             patch("retrieval.searcher.search_with_rerank") as mock_search:
+            mock_embed.return_value = [[0.1] * 1024]
+            mock_search.return_value = [
+                {"heading_path": "依赖注入", "content": "FastAPI 依赖注入系统", "page": None,
+                 "doc_name": "features.md", "distance": 0.2}
+            ]
+            resp = MagicMock(status_code=200)
+            resp.output.text = answer + "\n来源: [1]"
+            mock_llm.return_value = resp
+            body = client.post("/api/ask",
+                               json={"question": question, "session_id": session_id}).json()
+        return body, mock_llm
+
+    def test_first_call_returns_new_session_id(self):
+        body, _ = self._ask("依赖注入是什么？")
+        assert body["status"] == "ok"
+        assert body["session_id"] != ""
+
+    def test_second_call_with_session_id_sees_history(self):
+        """会话回传：第一轮的问答经 PG 持久化后进入第二轮提示词"""
+        first, _ = self._ask("依赖注入是什么？")
+        sid = first["session_id"]
+        second, mock_llm = self._ask("刚才第一句话说了什么？", session_id=sid)
+        assert second["session_id"] == sid
+        prompt = mock_llm.call_args.kwargs["prompt"]
+        assert "依赖注入是什么？" in prompt              # 第一轮问题进提示词
+        assert "依赖注入是 FastAPI 核心机制" in prompt   # 第一轮回答进提示词

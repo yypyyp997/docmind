@@ -74,3 +74,30 @@ class TestAskFlow:
         assert result["answer"] == ""
         assert "InternalError" in result["llm_error"]
         assert result["sources"] == []
+
+class TestMultiTurn:
+    @patch("dashscope.Generation.call")
+    @patch("retrieval.searcher.search_with_rerank")
+    def test_ask_history_enters_prompt(self, mock_search, mock_llm_call):
+        """多轮：装配好的历史进入提示词（模型能看见上文）"""
+        mock_search.return_value = CTX
+        mock_llm_call.return_value = _mock_llm("好的 [1]。\n来源: [1]")
+        history = [
+            {"role": "user", "content": "深蹲要注意什么？"},
+            {"role": "assistant", "content": "膝盖对准脚尖，循序渐进 [1]。"},
+        ]
+        from agent.graph import ask
+        ask("第二点展开说说", history=history)
+        prompt = mock_llm_call.call_args.kwargs["prompt"]
+        assert "深蹲要注意什么？" in prompt        # 上文的问题在
+        assert "循序渐进" in prompt                # 上文的回答在
+
+    @patch("dashscope.Generation.call")
+    @patch("retrieval.searcher.search_with_rerank")
+    def test_ask_no_history_prompt_has_placeholder(self, mock_search, mock_llm_call):
+        """单轮：无历史 → 历史段为占位文本（向后兼容契约）"""
+        mock_search.return_value = CTX
+        mock_llm_call.return_value = _mock_llm("好的 [1]。\n来源: [1]")
+        from agent.graph import ask
+        ask("深蹲要注意什么？")
+        assert "（无，本轮为会话首轮）" in mock_llm_call.call_args.kwargs["prompt"]

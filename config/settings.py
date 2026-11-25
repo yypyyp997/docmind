@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     SEARCH_TOP_K: int = 3
     RECALL_K: int = 20
 
+    # ---- 多轮对话（分层记忆装配参数）----
+    CHAT_RECENT_TURNS: int = 2  # 短窗轮数：最近 N 轮原文无条件进提示词
+    CHAT_RECALL_TOP_K: int = 4  # 更早历史的语义召回条数
+    CHAT_CONTEXT_BUDGET_CHARS: int = 6000  # 历史装配的字符预算（从新到旧装，超了即停）
+
     @field_validator("DASHSCOPE_API_KEY", "API_KEY", mode="before")
     @classmethod
     def _strip_secret_whitespace(cls, v):
