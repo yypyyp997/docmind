@@ -6,10 +6,12 @@
 - 请求日志中间件：方法/路径/状态码/耗时一次成型（/health 降噪跳过）
 - 认证失败与降级事件进日志（security 事件可审计）
 """
+import json
 import logging
 import time
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from config.settings import settings
@@ -102,6 +104,11 @@ class AskRequest(BaseModel):
     doc_name: str = ""
     top_k: int = Field(3, ge=1, le=20)
     session_id: str = ""     # 多轮：回传上次响应的 session_id 续会话；空 = 新会话
+    stream: bool = False     # true = SSE 真流式；false = 完整 JSON（默认）
+
+def _sse(event: dict) -> str:
+    """SSE 帧编码：data: {json}\n\n（ensure_ascii=False 保中文直读；换行由 JSON 转义，帧结构安全）。"""
+    return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 @app.post("/api/search", dependencies=[Depends(verify_api_key)])
 def api_search(req: SearchRequest):
@@ -168,19 +175,39 @@ def api_delete_document(doc_name: str):
 def api_ask(req: AskRequest):
     """文档问答：完整 RAG 链路（检索 → 生成 → 引用溯源）。
 
-    多轮对话：请求带 session_id 时按分层记忆装配历史（短窗+语义召回）；
-    不带则新建会话，响应回传 session_id，客户端回传即可多轮。
-    LLM 失败时降级：status=degraded + 返回检索切片（有结果总好过空手而归）。
+    两种响应形态（同一端点，stream 参数切换）：
+    - stream=false（默认）：完整 JSON——answer + sources + session_id
+    - stream=true：SSE 真流式——session → retrieved → delta×N → done；失败 → error
+    多轮对话：带 session_id 按分层记忆装配历史；不带则新建会话并回传 session_id。
     """
-    from agent.graph import ask
+    from agent.graph import ask, ask_stream
     from storage.chat_store import assemble_history, new_session_id, save_exchange
     from storage.embedder import embed_texts
 
     query_vector = embed_texts([req.question.strip()])[0]
     history = assemble_history(req.session_id, query_vector) if req.session_id else []
+    session_id = req.session_id or new_session_id()
+
+    if req.stream:
+        def _event_stream():
+            final = None
+            for event in ask_stream(req.question, doc_name=req.doc_name,
+                                    top_k=req.top_k, query_vector=query_vector,
+                                    history=history, session_id=session_id):
+                if event["type"] == "done":
+                    final = event
+                yield _sse(event)
+            if final and final["answer"]:
+                save_exchange(session_id, req.question, final["answer"], query_vector)
+
+        return StreamingResponse(
+            _event_stream(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
     result = ask(req.question, doc_name=req.doc_name, top_k=req.top_k,
                  query_vector=query_vector, history=history)
-    session_id = req.session_id or new_session_id()
     if result["answer"]:
         save_exchange(session_id, req.question, result["answer"], query_vector)
 

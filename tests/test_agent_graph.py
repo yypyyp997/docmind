@@ -101,3 +101,58 @@ class TestMultiTurn:
         from agent.graph import ask
         ask("深蹲要注意什么？")
         assert "（无，本轮为会话首轮）" in mock_llm_call.call_args.kwargs["prompt"]
+
+class TestAskStream:
+    def _stream(self, question="深蹲要注意什么？", history=None, session_id="s1",
+                chunks=("深蹲时膝盖", "对准脚尖 [1]。")):
+        with patch("dashscope.Generation.call") as mock_llm, \
+             patch("retrieval.searcher.search_with_rerank") as mock_search:
+            mock_search.return_value = CTX
+            mock_llm.return_value = iter([
+                MagicMock(status_code=200, output=MagicMock(text=t)) for t in chunks
+            ])
+            from agent.graph import ask_stream
+            events = list(ask_stream(question, history=history, session_id=session_id))
+        return events
+
+    def test_event_sequence_contract(self):
+        """事件契约：session → retrieved → delta×N → done，增量拼接 == 全量"""
+        events = self._stream()
+        types = [e["type"] for e in events]
+        assert types[0] == "session"
+        assert types[1] == "retrieved"
+        assert "delta" in types
+        assert types[-1] == "done"
+        deltas = "".join(e["text"] for e in events if e["type"] == "delta")
+        done = events[-1]
+        assert deltas == done["answer"] == "深蹲时膝盖对准脚尖 [1]。"
+        assert done["sources"][0]["ref"] == 1              # 引用解析与图路径同源
+
+    def test_stream_session_event_first(self):
+        events = self._stream(session_id="sess-1")
+        assert events[0] == {"type": "session", "session_id": "sess-1"}
+
+    def test_stream_empty_retrieval_skips_llm(self):
+        """空检索：不调 LLM，诚实话术作为单条增量"""
+        with patch("dashscope.Generation.call") as mock_llm, \
+             patch("retrieval.searcher.search_with_rerank") as mock_search:
+            mock_search.return_value = []
+            from agent.graph import ask_stream
+            events = list(ask_stream("任意问题", session_id="s"))
+        assert [e["type"] for e in events] == ["session", "retrieved", "delta", "done"]
+        assert "知识库中没有相关内容。" in events[-2]["text"]
+        mock_llm.assert_not_called()
+
+    def test_stream_llm_error_yields_error_event(self):
+        """LLM 失败 → error 事件收尾，无 done"""
+        with patch("dashscope.Generation.call") as mock_llm, \
+             patch("retrieval.searcher.search_with_rerank") as mock_search:
+            mock_search.return_value = CTX
+            mock_llm.return_value = iter([
+                MagicMock(status_code=500, code="InternalError", message="boom")
+            ])
+            from agent.graph import ask_stream
+            events = list(ask_stream("深蹲要注意什么？", session_id="s"))
+        assert events[-1]["type"] == "error"
+        assert "InternalError" in events[-1]["detail"]
+        assert not any(e["type"] == "done" for e in events)

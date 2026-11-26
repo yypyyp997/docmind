@@ -150,3 +150,52 @@ class TestAskSession:
         prompt = mock_llm.call_args.kwargs["prompt"]
         assert "依赖注入是什么？" in prompt              # 第一轮问题进提示词
         assert "依赖注入是 FastAPI 核心机制" in prompt   # 第一轮回答进提示词
+
+class TestAskStreamEndpoint:
+    """stream=true：SSE 真流式契约 + 会话持久化（真实 PG，mock 向量化/LLM 流/检索）。"""
+
+    def _stream(self, question, session_id="", answer="依赖注入是 FastAPI 核心机制"):
+        import json as _json
+        with patch("storage.embedder.embed_texts") as mock_embed, \
+             patch("dashscope.Generation.call") as mock_llm, \
+             patch("retrieval.searcher.search_with_rerank") as mock_search:
+            mock_embed.return_value = [[0.1] * 1024]
+            mock_search.return_value = [
+                {"heading_path": "依赖注入", "content": "FastAPI 依赖注入系统", "page": None,
+                 "doc_name": "features.md", "distance": 0.2}
+            ]
+            chunks = ["依赖注入", "是 FastAPI 核心机制 [1]。"]
+            mock_llm.return_value = iter([
+                MagicMock(status_code=200, output=MagicMock(text=t)) for t in chunks
+            ])
+            with client.stream("POST", "/api/ask",
+                               json={"question": question, "session_id": session_id,
+                                     "stream": True}) as resp:
+                assert resp.status_code == 200
+                assert resp.headers["content-type"].startswith("text/event-stream")
+                events = []
+                for line in resp.iter_lines():
+                    if line.startswith("data: "):
+                        events.append(_json.loads(line[len("data: "):]))
+        return events, mock_llm
+
+    def test_stream_sse_contract_and_session(self):
+        events, _ = self._stream("依赖注入是什么？")
+        types = [e["type"] for e in events]
+        assert types[0] == "session"
+        assert types[1] == "retrieved"
+        assert types[-1] == "done"
+        deltas = "".join(e["text"] for e in events if e["type"] == "delta")
+        assert deltas == "依赖注入是 FastAPI 核心机制 [1]。"
+        assert events[-1]["sources"][0]["doc_name"] == "features.md"
+        assert events[-1]["session_id"] == events[0]["session_id"] != ""
+
+    def test_stream_second_call_history_enters_prompt(self):
+        """流式会话持久化：第一轮经 PG 入库后进入第二轮提示词"""
+        first, _ = self._stream("依赖注入是什么？")
+        sid = first[-1]["session_id"]
+        _, mock_llm = self._stream("刚才第一句话说了什么？", session_id=sid)
+        prompt = mock_llm.call_args.kwargs["prompt"]
+        assert "依赖注入是什么？" in prompt              # 第一轮问题进提示词
+        assert "依赖注入是 FastAPI 核心机制" in prompt   # 第一轮回答进提示词
+
